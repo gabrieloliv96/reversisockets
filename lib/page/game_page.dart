@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
+import 'package:reversisockets/enum/messages.dart';
 import 'package:reversisockets/enum/socket_events.dart';
 import '../services/socket.dart';
 
@@ -18,7 +22,9 @@ class _GamePageState extends State<GamePage> {
       List.generate(8, (_) => List.filled(8, grayColor));
   Color currentColor = blackColor;
   final SocketClient _client = SocketClient();
-  bool canPlay = true;
+  bool canPlay = false;
+  bool hasFirst = false;
+  bool black = true;
 
   @override
   void initState() {
@@ -36,10 +42,51 @@ class _GamePageState extends State<GamePage> {
     setState(() {});
   }
 
+  void _handleFirstPlayer() {
+    _client.firstPlayer(playerTurn: 1);
+    setState(() {
+      hasFirst = true;
+      canPlay = true;
+      black = false;
+    });
+  }
+
+  void _turnStart() {
+    setState(() {
+      canPlay = true;
+    });
+  }
+
+  void _turnEnd() {
+    setState(() {
+      canPlay = false;
+    });
+  }
+
+  _handleGivUp() {
+    final SnackBar snackbar = SnackBar(
+      content: Text(
+        Messages.givUpRequest,
+        style: const TextStyle(
+          color: Colors.black,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      backgroundColor: Colors.yellowAccent,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(snackbar);
+    _client.giveUp(playerColor: Colors.black);
+  }
+
   void _handleComingMessage() {
     _client.socket.on(SocketEvents.boardMovement.event, (data) {
-      List<int> move = List<int>.from(data);
-      _makeMove(move[0], move[1], move[2]);
+      var enemyMove = jsonDecode(data);
+      setState(() {
+        _flipPieces(enemyMove['h'], enemyMove['v'], black ? 0 : 1);
+        _board[enemyMove['h']][enemyMove['v']] =
+            !black ? blackColor : whiteColor;
+        _turnStart();
+      });
     });
 
     _client.socket.on(SocketEvents.turnEnd.event, (data) {
@@ -47,16 +94,148 @@ class _GamePageState extends State<GamePage> {
         canPlay = true;
       });
     });
+
+    _client.socket.on(SocketEvents.firstPlayer.event, (data) {
+      _hasFirst();
+    });
+
+    _client.socket.on(
+      SocketEvents.turnEnd.event,
+      (data) {
+        _turnStart();
+      },
+    );
+
+    _client.socket.on(
+      SocketEvents.giveUp.event,
+      (data) {
+        _showGivUpRequest();
+      },
+    );
+
+    _client.socket.on(
+      SocketEvents.aceptGiveUp.event,
+      (data) {
+        final SnackBar snackbar = SnackBar(
+          content: Text(Messages.loseByGivingUp),
+          backgroundColor: Colors.red,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(snackbar);
+        _resetBoard();
+      },
+    );
   }
 
-  void _makeMove(int x, int y, int color) {
+  void _showGivUpRequest() async {
+    showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Desistencia!'),
+          content: const SingleChildScrollView(
+            child: Column(
+              children: [
+                Text('O adversário quer desistir do jogo!'),
+                Text('Caso aceite , você será o  vencedor!')
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white,
+              ),
+              child: const Text('Não Aceitar'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+              ),
+              child: const Text(
+                'Aceitar',
+                style: TextStyle(
+                  color: Colors.white,
+                ),
+              ),
+              onPressed: () {
+                _aceptPlayerGivenUp();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  _aceptPlayerGivenUp() {
+    Navigator.of(context).pop();
+    final SnackBar snackbar = SnackBar(
+      content: Text(Messages.winTheGame),
+      backgroundColor: Colors.green,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(snackbar);
+    _client.socket.emit(SocketEvents.aceptGiveUp.event, 1);
+    _resetBoard();
+  }
+
+  void _showVictory() async {
+    showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Vencedor!'),
+          content: const SingleChildScrollView(
+            child: Column(
+              children: [
+                Text('Parabéns, venceu o jogo!'),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+              ),
+              child: const Text(
+                'OK',
+                style: TextStyle(
+                  color: Colors.white,
+                ),
+              ),
+              onPressed: () {
+                _aceptPlayerGivenUp();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _hasFirst() {
     setState(() {
-      _board[x][y] = color == 1 ? blackColor : whiteColor;
-      _flipPieces(x, y, color);
+      canPlay = false;
+      hasFirst = true;
+    });
+  }
+
+  void _makeMove(int x, int y, bool color) {
+    setState(() {
+      _board[x][y] = color ? blackColor : whiteColor;
+      _flipPieces(x, y, color ? 1 : 0);
       canPlay = false;
       currentColor = currentColor == blackColor ? whiteColor : blackColor;
     });
-    _client.sendBoardMove(x, y, currentColor == blackColor ? 1 : 2);
+    _client.sendBoardMove(
+      x,
+      y,
+    );
+    _turnEnd();
     _checkWinner();
   }
 
@@ -127,93 +306,117 @@ class _GamePageState extends State<GamePage> {
         _board[i][j] = grayColor;
       }
     }
+    canPlay = false;
+    hasFirst = false;
     _initializeBoard();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        // mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Linha de letras (A-H)
-          Row(
-            // mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(9, (index) {
-              return index == 0
-                  ? const SizedBox(
-                      width: 40,
-                      height: 40,
-                    )
-                  : Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      child: Text(
-                        String.fromCharCode(65 + index - 1), // Letras A-H
-                        style: const TextStyle(fontSize: 20),
-                      ),
-                    );
-            }),
-          ),
-          // Tabuleiro
-          Expanded(
-            child: Column(
-              children: List.generate(8, (x) {
-                return Row(
-                  children: [
-                    // Números (1-8)
-                    Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      child: Text(
-                        '${x + 1}', // Números 1-8
-                        style: const TextStyle(fontSize: 20),
-                      ),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Linha de letras (A-H)
+        Row(
+          // mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(9, (index) {
+            return index == 0
+                ? const SizedBox(
+                    width: 40,
+                    height: 40,
+                  )
+                : Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    child: Text(
+                      String.fromCharCode(65 + index - 1), // Letras A-H
+                      style: const TextStyle(fontSize: 20),
                     ),
-                    // Células do tabuleiro
-                    for (int y = 0; y < 8; y++)
-                      GestureDetector(
-                        onTap: () {
-                          if (canPlay && _isValidMove(x, y)) {
-                            _makeMove(x, y, currentColor == blackColor ? 1 : 2);
-                          }
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.black),
-                            color: _board[x][y],
-                          ),
-                          child: Center(
-                            child: Text(
-                              _board[x][y] == blackColor
-                                  ? 'B'
-                                  : _board[x][y] == whiteColor
-                                      ? 'W'
-                                      : '',
-                              style:  TextStyle(fontSize: 24, color:_board[x][y] == blackColor
-                                  ? Colors.white
-                                  : _board[x][y] == whiteColor
-                                      ? Colors.black
-                                      : Colors.grey ),
-                            ),
+                  );
+          }),
+        ),
+        // Tabuleiro
+        Expanded(
+          child: Column(
+            children: List.generate(8, (x) {
+              return Row(
+                children: [
+                  // Números (1-8)
+                  Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${x + 1}', // Números 1-8
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                  ),
+                  // Células do tabuleiro
+                  for (int y = 0; y < 8; y++)
+                    GestureDetector(
+                      onTap: () {
+                        if (canPlay && _isValidMove(x, y)) {
+                          _makeMove(x, y, black ? true : false);
+                        }
+                      },
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.black),
+                          color: _board[x][y],
+                        ),
+                        child: Center(
+                          child: Text(
+                            _board[x][y] == blackColor
+                                ? 'B'
+                                : _board[x][y] == whiteColor
+                                    ? 'W'
+                                    : '',
+                            style: TextStyle(
+                                fontSize: 24,
+                                color: _board[x][y] == blackColor
+                                    ? Colors.white
+                                    : _board[x][y] == whiteColor
+                                        ? Colors.black
+                                        : Colors.grey),
                           ),
                         ),
                       ),
-                  ],
-                );
-              }),
-            ),
+                    ),
+                ],
+              );
+            }),
           ),
+        ),
+        !hasFirst
+            ? SizedBox()
+            : black
+                ? Text('Você é o preto.')
+                : Text('Você é o branco'),
+        !hasFirst
+            ? ElevatedButton(
+                onPressed: _handleFirstPlayer,
+                child: const Text('Ser o primeiro.'),
+              )
+            : Text(canPlay ? "Sua vez" : "Aguarde o turno do jogador"),
+        const SizedBox(
+          height: 25,
+        ),
+        ElevatedButton(
+          onPressed: _resetBoard,
+          child: const Text('Reiniciar'),
+        ),
+        const SizedBox(
+          height: 25,
+        ),
+        if (hasFirst)
           ElevatedButton(
-            onPressed: _resetBoard,
-            child: const Text('Reiniciar'),
+            onPressed: _handleGivUp,
+            child: const Text('Desistir'),
           ),
-        ],
-      ),
+      ],
     );
   }
 

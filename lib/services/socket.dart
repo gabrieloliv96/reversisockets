@@ -1,7 +1,8 @@
+import 'dart:developer';
+
 import 'package:flutter/services.dart';
 import 'package:reversisockets/enum/socket_events.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
-
 
 class SocketClient {
   static final SocketClient _socketClient = SocketClient._internal();
@@ -17,7 +18,9 @@ class SocketClient {
 
   connect() {
     socket.connect();
-    socket.onConnectError((data) {});
+    socket.onConnectError((data) {
+      log(data);
+    });
   }
 
   sendMessage({required String message}) {
@@ -25,19 +28,18 @@ class SocketClient {
   }
 
   void sendBoardMove(
-   int boardH,
-   int boardV,
-   int playerColor,
-) {
-  // Cria um mapa com a jogada do jogador
-  Map<String, dynamic> playerMove = {
-    'player': playerColor,
-    'position': {'h': boardH, 'v': boardV},
-  };
+    int boardH,
+    int boardV,
+  ) {
+    // Cria um mapa com a jogada do jogador
+    Map<String, dynamic> playerMove = {
+      '"h"': boardH,
+      '"v"': boardV,
+    };
 
-  // Envia a jogada através do socket
-  socket.emit(SocketEvents.boardMovement.event, playerMove);
-}
+    // Envia a jogada através do socket
+    socket.emit(SocketEvents.boardMovement.event, playerMove.toString());
+  }
 
   giveUp({
     required Color playerColor,
