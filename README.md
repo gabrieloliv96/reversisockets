@@ -1,16 +1,33 @@
 # reversisockets
 
-A new Flutter project.
+Necessário para executar o código:
 
-## Getting Started
+Flutter 3.x.x ++
+Dart 3.x ++
+Servidor npm que esta no link https://github.com/gabrieloliv96/restaumsrv
+Projeto de Sockets
 
-This project is a starting point for a Flutter application.
+Objetivo: Implementar o jogo Reversi para dois jogadores 
 
-A few resources to get you started if this is your first Flutter project:
+Funcionalidades Básicas:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+· Controle de turno, com definição de quem inicia a partida
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+· Movimentação das peças nos tabuleiros
+
+· Desistência
+
+· Chat para comunicação durante toda a partida
+
+· Indicação de vencedor
+
+** Existe um executavel dentro do Projeto **
+
+Um arquivo zip dentro da pasta raiz quando clonado.
+
+-- Resta um.zip Basta extraí-lo e executar o arquivo "sktrestaum.exe"
+
+** Para executar o projeto em flutter **
+
+Flutter pub get
+Flutter run
